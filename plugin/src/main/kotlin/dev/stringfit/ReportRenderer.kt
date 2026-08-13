@@ -30,6 +30,42 @@ object ReportRenderer {
         }
         appendLine()
 
+        if (report.locales.isNotEmpty()) {
+            appendLine("Languages")
+            appendLine(
+                "  %-10s %-5s %7s %8s %8s".format("locale", "dir", "sites", "expand", "cut off")
+            )
+            report.locales.forEach { l ->
+                appendLine(
+                    "  %-10s %-5s %7d %8s %8d".format(
+                        l.locale,
+                        if (l.rtl) "RTL" else "LTR",
+                        l.sites,
+                        l.expansion?.let { "%.2fx".format(it) } ?: "-",
+                        l.cutOff.size,
+                    )
+                )
+            }
+            appendLine()
+        }
+
+        report.locales.filter { it.cutOff.isNotEmpty() }.forEach { l ->
+            section(
+                "CUT OFF in ${l.locale}${if (l.rtl) " (RTL)" else ""}",
+                l.cutOff.distinctBy { it.stringName }.map { s ->
+                    "${s.stringName}  needs ${s.intrinsicWidthPx}px in ${s.maxWidthPx}px"
+                },
+            )
+        }
+
+        section(
+            "RTL ASYMMETRY — layout does not mirror; check start/end padding",
+            report.rtlAsymmetry.map {
+                "${it.stringName} @ ${it.preview.substringAfterLast('.')}  " +
+                    "[${it.kind.name.lowercase()}] ${it.detail}"
+            },
+        )
+
         section("CUT OFF — text does not fit today", report.cutOff.map { v ->
             val w = v.cutOff.first()
             "${v.name}  needs ${w.intrinsicWidthPx}px in ${w.maxWidthPx}px" +

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <string name="screen_title">مكتبتك</string>
+    <string name="item_subtitle">تم التحديث للتو</string>
+    <string name="action_cancel">إلغاء</string>
+    <string name="button_confirm">تأكيد</string>
+    <string name="greeting">مرحبا بعودتك، <xliff:g id="name">%1$s</xliff:g></string>
+    <string name="action_download_all">تنزيل كل شيء</string>
+    <string name="footer_note">هذا كل شيء في الوقت الحالي</string>
+</resources>

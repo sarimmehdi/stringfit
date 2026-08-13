@@ -1,6 +1,7 @@
 package dev.stringfit.sample
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.absolutePadding
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -124,8 +125,30 @@ fun GreetingBar(userName: String, modifier: Modifier = Modifier) {
 }
 
 // ---------------------------------------------------------------------------
+// RTL BUG (on purpose): absolutePadding does not mirror, so in a right-to-left
+// layout the inset lands on the wrong side and the text loses width.
+// ---------------------------------------------------------------------------
+
+@Composable
+fun BadlyMirroredRow(modifier: Modifier = Modifier) {
+    Row(modifier.fillMaxWidth().absolutePadding(left = 120.dp)) {
+        Text(
+            text = stringResource(R.string.item_subtitle),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Previews
 // ---------------------------------------------------------------------------
+
+@Preview(name = "mirror-bug", widthDp = 360)
+@Composable
+private fun BadlyMirroredRowPreview() {
+    Surface { BadlyMirroredRow() }
+}
 
 @Preview(name = "library", widthDp = 360)
 @Composable

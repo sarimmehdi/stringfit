@@ -4,7 +4,10 @@ import android.content.Context
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.width
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -23,6 +26,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.ParameterizedRobolectricTestRunner
 import org.robolectric.annotation.Config
+import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.GraphicsMode
 import sergio.sastre.composable.preview.scanner.android.AndroidComposablePreviewScanner
 import sergio.sastre.composable.preview.scanner.android.AndroidPreviewInfo
@@ -49,20 +53,38 @@ import java.io.File
 )
 class StringFitHarnessTest(
     private val preview: ComposablePreview<AndroidPreviewInfo>,
+    private val locale: String,
 ) {
 
     companion object {
         private val outDir = File("build/stringfit/sites").apply { mkdirs() }
 
+        /**
+         * Locales to measure, written by `stringFitPrepare` from your
+         * `stringFit { locales }` config. An empty entry means the
+         * source locale, which is always measured as the baseline.
+         */
+        private fun locales(): List<String> {
+            val f = File("build/stringfit/locales.txt")
+            val configured = if (f.isFile) {
+                f.readLines().map { it.trim() }.filter { it.isNotEmpty() }
+            } else {
+                emptyList()
+            }
+            return listOf("") + configured
+        }
+
         @JvmStatic
-        @ParameterizedRobolectricTestRunner.Parameters(name = "{0}")
-        fun previews(): List<ComposablePreview<AndroidPreviewInfo>> =
-            AndroidComposablePreviewScanner()
+        @ParameterizedRobolectricTestRunner.Parameters(name = "{0} {1}")
+        fun cases(): List<Array<Any>> {
+            val previews = AndroidComposablePreviewScanner()
                 .scanPackageTrees("dev.stringfit.sample")
                 // Preview functions are idiomatically private; without
                 // this the scanner silently returns an empty list.
                 .includePrivatePreviews()
                 .getPreviews()
+            return previews.flatMap { p -> locales().map { l -> arrayOf<Any>(p, l) } }
+        }
 
         // One file per preview: @Parameters is re-invoked once per
         // Robolectric sandbox, so a shared sink gets truncated.
@@ -117,10 +139,12 @@ class StringFitHarnessTest(
                     softWrap = li.softWrap, maxLines = Int.MAX_VALUE,
                     constraints = Constraints(maxWidth = li.constraints.maxWidth),
                 ).lineCount
+                val b = node.boundsInRoot
                 out += listOf(
                     texts.joinToString(" ") { it.text },
                     li.constraints.maxWidth, intrinsic, li.maxLines,
                     linesNeeded, r.size.width,
+                    b.left.toInt(), b.right.toInt(),
                 )
             }
         }
@@ -134,9 +158,24 @@ class StringFitHarnessTest(
         val fontScale = if (info.fontScale > 0f) info.fontScale else 1f
         val label = "${preview.declaringClass}.${preview.methodName}[${info.name}]"
 
+        // Switching the qualifier swaps the string resources AND the
+        // layout direction, so RTL locales exercise real mirroring.
+        // "rtl-probe" keeps the source text and flips only the layout
+        // direction, which is what makes a width change attributable
+        // to mirroring rather than to a different translation.
+        val probe = locale == "rtl-probe"
+        if (locale.isNotEmpty() && !probe) {
+            RuntimeEnvironment.setQualifiers("+" + locale)
+        }
+
         val raw = mutableListOf<List<Any>>()
         val error = runCatching {
-            rule.setContent { Box(Modifier.width(widthDp.dp)) { preview() } }
+            rule.setContent {
+                val dir = if (probe) LayoutDirection.Rtl else LocalLayoutDirection.current
+                CompositionLocalProvider(LocalLayoutDirection provides dir) {
+                    Box(Modifier.width(widthDp.dp)) { preview() }
+                }
+            }
             rule.waitForIdle()
             // Dialogs and bottom sheets compose into their OWN root
             // window; onRoot() misses every one of them.
@@ -145,17 +184,18 @@ class StringFitHarnessTest(
         }.exceptionOrNull()
 
         if (error != null) {
-            println("STRINGFIT_SKIP $label :: ${error::class.simpleName}: ${error.message?.take(120)}")
+            println("STRINGFIT_SKIP $label [$locale] :: ${error::class.simpleName}: ${error.message?.take(120)}")
             return
         }
 
         val catalog = catalog()
         write(
-            label,
+            label + "_" + (locale.ifEmpty { "source" }),
             raw.mapNotNull { row ->
                 val name = resolve(row[0] as String, catalog) ?: return@mapNotNull null
                 listOf(
-                    name, label, row[1], row[2], row[3], row[4], row[5], widthDp, fontScale,
+                    name, label, row[1], row[2], row[3], row[4], row[5],
+                    widthDp, fontScale, locale, row[6], row[7],
                 ).joinToString("\t")
             },
         )

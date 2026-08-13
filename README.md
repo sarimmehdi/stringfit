@@ -94,11 +94,65 @@ Add the test dependencies it prints, then:
 ./gradlew :app:stringFitReport
 ```
 
+## Languages
+
+By default StringFit measures **every locale your project actually ships**,
+discovered from `values-XX` directories. Testing German against an app with no
+German translation measures nothing, so there is no fixed default list.
+
+```kotlin
+stringFit {
+    // default: every values-XX in the project
+    locales = listOf("de", "fr", "ja", "ar")     // explicit
+    locales = listOf("high-risk")                 // de, ru, fr, ar, ja, th, hi
+    locales = listOf("popular")                   // 17 widely shipped languages
+    locales = listOf("pseudo")                    // en-XA / ar-XB, no translations needed
+    locales = listOf("high-risk", "pt-rBR")       // presets mix with explicit codes
+}
+```
+
+The report shows what each language does to your layout:
+
+```
+Languages
+  locale     dir     sites   expand  cut off
+  ar         RTL        10    0.65x        1
+  de         LTR        10    1.21x        1
+```
+
+`expand` is mean intrinsic text width relative to the source locale. German runs
+~1.2x wider here; Arabic is actually *more compact* at 0.65x, which is why
+budgeting by character count misleads.
+
+## Right to left
+
+Every run includes a **direction probe**: the source text rendered with the
+layout direction forced to RTL. Holding the text constant is what makes a
+difference attributable to the layout:
+
+```
+RTL ASYMMETRY — layout does not mirror; check start/end padding (1)
+    item_subtitle @ BadlyMirroredRowPreview[mirror-bug]
+      [position] sits at x=504px in RTL; mirroring would place it at 264px
+```
+
+Comparing a real RTL language against the source cannot do this. When Arabic
+made a sibling button narrower, the freed width looked exactly like a mirroring
+bug — a false positive the probe removes.
+
+Two kinds are reported:
+
+- `width` — available width changed when only the direction flipped.
+- `position` — the element kept the same width but never moved. This is what
+  `Modifier.absolutePadding(left = …)` and hardcoded left/right insets do:
+  nothing measurable changes except where the text ends up.
+
 ## Tasks
 
 | task | what it does |
 |---|---|
 | `stringFitInstallHarness` | Writes the measurement harness into `src/test`. |
+| `stringFitPrepare` | Resolves which locales to measure (runs automatically before `test`). |
 | `stringFitReport` | Reads the measurements and reports budgets, cut-offs and conflicts. |
 | `stringFitBaseline` | Records currently-unused strings so only *new* ones get reported. |
 
@@ -170,7 +224,9 @@ already pays for the compile; the measurement is free on top.
 - **Coverage is bounded by your previews.** On a real app, ~61% of statically
   reachable strings actually render; strings behind untaken branches or below a
   lazy list's viewport never appear. The report names them so you can add previews.
-- **Source-locale measurement.** Translated-locale verification is not built yet.
+- **RTL text shaping** is Robolectric's, and its font stack may not match a
+  device for Arabic or Devanagari. Direction and layout findings are reliable;
+  treat absolute glyph widths for complex scripts as indicative.
 - Reported figures are Robolectric's rendering, which is close to but not identical
   to a device.
 
@@ -179,7 +235,7 @@ already pays for the compile; the measurement is free on top.
 - [x] Static coverage analysis
 - [x] Render harness with per-site width and line budgets
 - [x] Gradle plugin: install, report, unused triage
-- [ ] Translated-locale verification (`stringFitVerify`)
+- [x] Translated-locale measurement, with RTL mirroring checks
 - [ ] Screenshots with per-string bounding boxes
 - [ ] XLIFF 2.0 export with size restrictions
 - [ ] Publish to the Gradle Plugin Portal

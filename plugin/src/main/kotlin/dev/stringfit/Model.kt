@@ -27,7 +27,14 @@ data class Site(
     val layoutWidthPx: Int = 0,
     val widthDp: Int = 0,
     val fontScale: Float = 1f,
-)
+    /** Resource qualifier this was rendered under; empty means source locale. */
+    val locale: String = "",
+    /** Node bounds in the root, used to check that RTL layouts mirror. */
+    val leftPx: Int = -1,
+    val rightPx: Int = -1,
+) {
+    val rtl: Boolean get() = locale.isNotEmpty() && Locales.isRtl(locale)
+}
 
 /**
  * How much freedom a translator actually has at a site.
@@ -71,8 +78,40 @@ data class StringVerdict(
     val conflict: Boolean,
     /** Placeholder/mock copy, which should not be reported as a user-facing bug. */
     val looksLikeSample: Boolean,
+    /** Locales in which at least one site is cut off. */
+    val cutOffLocales: Set<String> = emptySet(),
 ) {
     val isCutOff: Boolean get() = cutOff.isNotEmpty()
+}
+
+/** Per-language rollup: what this translation does to the layout. */
+data class LocaleSummary(
+    val locale: String,
+    val rtl: Boolean,
+    val sites: Int,
+    val cutOff: List<Site>,
+    val tight: List<Site>,
+    /** Mean intrinsic width relative to the source locale. >1 means expansion. */
+    val expansion: Double?,
+)
+
+/**
+ * A site whose available width changes between the LTR and RTL renders of the
+ * same preview: the layout is not mirroring symmetrically.
+ */
+data class RtlAsymmetry(
+    val stringName: String,
+    val preview: String,
+    val kind: Kind,
+    val detail: String,
+) {
+    enum class Kind {
+        /** Available width changed when only the direction flipped. */
+        WIDTH,
+
+        /** The element stayed on the same side instead of mirroring. */
+        POSITION,
+    }
 }
 
 data class Report(
@@ -84,6 +123,8 @@ data class Report(
     /** Unused entries the developer has already triaged. */
     val unusedTriaged: Map<String, UnusedStatus>,
     val catalogSize: Int,
+    val locales: List<LocaleSummary> = emptyList(),
+    val rtlAsymmetry: List<RtlAsymmetry> = emptyList(),
 ) {
     val cutOff: List<StringVerdict> get() = measured.filter { it.isCutOff && !it.looksLikeSample }
     val conflicts: List<StringVerdict> get() = measured.filter { it.conflict }

@@ -9,6 +9,7 @@ import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.model.ObjectFactory
+import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputFiles
@@ -39,6 +40,20 @@ open class StringFitExtension @Inject constructor(objects: ObjectFactory) {
 
     /** Triage file for unused strings. */
     val triageFile: RegularFileProperty = objects.fileProperty()
+
+    /**
+     * Languages to measure alongside the source locale.
+     *
+     * Empty (the default) means *every locale the project ships*, discovered
+     * from `values-XX` directories -- testing German on an app with no German
+     * translation measures nothing. Presets `popular`, `high-risk`, `pseudo`
+     * and `all` expand in place and can be mixed with explicit codes:
+     *
+     * ```kotlin
+     * stringFit { locales = listOf("high-risk", "pt-rBR") }
+     * ```
+     */
+    val locales: ListProperty<String> = objects.listProperty(String::class.java)
 }
 
 @DisableCachingByDefault(because = "Writes a source file the developer owns")
@@ -90,6 +105,10 @@ abstract class ReportTask : DefaultTask() {
 
     @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE) @get:Optional
     abstract val triageFile: RegularFileProperty
+
+    @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE) @get:Optional
+    abstract val localesFile: RegularFileProperty
+
     @get:Input abstract val failOnCutOff: Property<Boolean>
     @get:OutputDirectory abstract val outputDir: DirectoryProperty
 
@@ -120,6 +139,37 @@ abstract class ReportTask : DefaultTask() {
         if (failOnCutOff.get() && report.cutOff.isNotEmpty()) {
             throw org.gradle.api.GradleException(
                 "StringFit: ${report.cutOff.size} string(s) are cut off in the source language."
+            )
+        }
+    }
+}
+
+@DisableCachingByDefault(because = "Writes a tiny file consumed by the test task")
+abstract class PrepareTask : DefaultTask() {
+    @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val resDirs: ConfigurableFileCollection
+
+    @get:Input abstract val locales: ListProperty<String>
+    @get:OutputFile abstract val localesFile: RegularFileProperty
+
+    @TaskAction
+    fun run() {
+        val resolved = Locales.resolve(locales.get(), resDirs.files)
+        val file = localesFile.get().asFile
+        file.parentFile.mkdirs()
+        file.writeText(resolved.joinToString("\n"))
+        if (resolved.isEmpty()) {
+            logger.lifecycle(
+                "StringFit: no translated locales found. Measuring the source " +
+                    "locale only. Add values-XX resources, or set " +
+                    "stringFit { locales = listOf(\"pseudo\") } to stress-test."
+            )
+        } else {
+            val rtl = resolved.filter(Locales::isRtl)
+            logger.lifecycle(
+                "StringFit: measuring ${resolved.size} locale(s): " +
+                    resolved.joinToString(", ") +
+                    if (rtl.isEmpty()) "" else "  (RTL: ${rtl.joinToString(", ")})"
             )
         }
     }
@@ -169,6 +219,17 @@ class StringFitPlugin : Plugin<Project> {
             t.target.set(layout.projectDirectory.file(Harness.RELATIVE_PATH))
         }
 
+        val prepare = project.tasks.register("stringFitPrepare", PrepareTask::class.java) { t ->
+            t.group = GROUP
+            t.description = "Resolves which locales the harness should measure."
+            t.resDirs.from(ext.resDirs)
+            t.locales.set(ext.locales)
+            t.localesFile.set(layout.buildDirectory.file("stringfit/locales.txt"))
+        }
+        // The harness reads locales.txt at test time, so it must exist first.
+        project.tasks.withType(org.gradle.api.tasks.testing.Test::class.java)
+            .configureEach { it.dependsOn(prepare) }
+
         project.tasks.register("stringFitBaseline", BaselineTask::class.java) { t ->
             t.group = GROUP
             t.description = "Records currently-unused strings so only new ones are reported."
@@ -183,6 +244,7 @@ class StringFitPlugin : Plugin<Project> {
             t.resDirs.from(ext.resDirs)
             t.sourceDirs.from(ext.sourceDirs)
             t.sitesDir.set(layout.buildDirectory.dir("stringfit/sites"))
+            t.localesFile.set(layout.buildDirectory.file("stringfit/locales.txt"))
             t.triageFile.set(ext.triageFile)
             t.failOnCutOff.set(ext.failOnCutOff)
             t.outputDir.set(layout.buildDirectory.dir("reports/stringfit"))

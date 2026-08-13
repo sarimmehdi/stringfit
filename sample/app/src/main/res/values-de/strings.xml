@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <string name="screen_title">Deine Bibliothek</string>
+    <string name="item_subtitle">Gerade aktualisiert</string>
+    <string name="action_cancel">Abbrechen</string>
+    <string name="button_confirm">Bestätigen</string>
+    <string name="greeting">Willkommen zurück, <xliff:g id="name">%1$s</xliff:g></string>
+    <string name="action_download_all">Alles herunterladen</string>
+    <string name="footer_note">Das ist vorerst alles</string>
+</resources>

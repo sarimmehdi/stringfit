@@ -154,6 +154,9 @@ object Catalog {
                         layoutWidthPx = p[6].toInt(),
                         widthDp = p[7].toInt(),
                         fontScale = p[8].toFloat(),
+                        locale = p.getOrNull(9).orEmpty(),
+                        leftPx = p.getOrNull(10)?.toIntOrNull() ?: -1,
+                        rightPx = p.getOrNull(11)?.toIntOrNull() ?: -1,
                     )
                 }.getOrNull()
             }

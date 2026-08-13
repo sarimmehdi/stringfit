@@ -89,6 +89,7 @@ object Budget {
             maxWidthHeadroom = hard.maxOrNull(),
             conflict = conflict,
             looksLikeSample = looksLikeSample(entry),
+            cutOffLocales = sites.filter { isCutOff(it) }.map { it.locale }.toSet(),
         )
     }
 
@@ -114,6 +115,80 @@ object Budget {
             unused = unused,
             unusedTriaged = triaged,
             catalogSize = translatable.size,
+            locales = summarise(sites),
+            rtlAsymmetry = rtlAsymmetry(sites),
         )
+    }
+
+    /** Mean intrinsic width per locale, relative to the source locale. */
+    fun summarise(sites: List<Site>): List<LocaleSummary> {
+        val source = sites.filter { it.locale.isEmpty() }
+        val baseline = source.associate { (it.stringName to it.preview) to it.intrinsicWidthPx }
+        return sites.groupBy { it.locale }
+            .filterKeys { it.isNotEmpty() && !Locales.isProbe(it) }
+            .map { (locale, group) ->
+                val paired = group.mapNotNull { s ->
+                    val base = baseline[s.stringName to s.preview]?.takeIf { it > 0 }
+                    if (base == null) null else s.intrinsicWidthPx.toDouble() / base
+                }
+                LocaleSummary(
+                    locale = locale,
+                    rtl = Locales.isRtl(locale),
+                    sites = group.size,
+                    cutOff = group.filter { isCutOff(it) },
+                    tight = group.filter {
+                        !isCutOff(it) && (widthHeadroom(it) ?: 9.0) < TIGHT_HEADROOM
+                    },
+                    expansion = paired.average().takeIf { paired.isNotEmpty() },
+                )
+            }
+            .sortedByDescending { it.cutOff.size }
+    }
+
+    /**
+     * Compare each site's available width in an LTR render against its RTL
+     * render. A material difference means the layout is not mirroring: usually
+     * a hardcoded left/right padding or a `Modifier.padding(start=)` that was
+     * meant to be direction-aware.
+     */
+    fun rtlAsymmetry(sites: List<Site>, tolerance: Double = 0.02): List<RtlAsymmetry> {
+        // Only the direction probe is comparable to the source: it renders the
+        // same text. A real RTL language differs in text as well as direction,
+        // so a width change there says nothing about mirroring.
+        val probe = sites.filter { Locales.isProbe(it.locale) }
+        if (probe.isEmpty()) return emptyList()
+        val ltr = sites.filter { it.locale.isEmpty() }
+            .associateBy { it.stringName to it.preview }
+
+        return probe.mapNotNull { r ->
+            val l = ltr[r.stringName to r.preview] ?: return@mapNotNull null
+            if (l.maxWidthPx <= 0 || r.maxWidthPx <= 0) return@mapNotNull null
+            if (l.maxWidthPx >= UNBOUNDED_WIDTH_PX) return@mapNotNull null
+
+            val widthDiff = kotlin.math.abs(l.maxWidthPx - r.maxWidthPx).toDouble() / l.maxWidthPx
+            if (widthDiff > tolerance) {
+                return@mapNotNull RtlAsymmetry(
+                    r.stringName, r.preview, RtlAsymmetry.Kind.WIDTH,
+                    "available width ${l.maxWidthPx}px LTR vs ${r.maxWidthPx}px RTL",
+                )
+            }
+
+            // A mirrored element ends up as far from the right edge as its LTR
+            // twin was from the left. `absolutePadding` and hardcoded left/right
+            // insets keep the same width but never move, so only position
+            // reveals them.
+            val rootPx = l.widthDp * 2
+            if (l.leftPx < 0 || r.leftPx < 0 || rootPx <= 0) return@mapNotNull null
+            val expectedLeft = rootPx - l.rightPx
+            val slack = (rootPx * tolerance).coerceAtLeast(4.0)
+            if (kotlin.math.abs(r.leftPx - expectedLeft) > slack) {
+                RtlAsymmetry(
+                    r.stringName, r.preview, RtlAsymmetry.Kind.POSITION,
+                    "sits at x=${r.leftPx}px in RTL; mirroring would place it at ${expectedLeft}px",
+                )
+            } else {
+                null
+            }
+        }.distinctBy { it.stringName to it.preview }
     }
 }
