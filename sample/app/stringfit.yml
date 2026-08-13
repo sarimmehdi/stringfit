@@ -1,0 +1,6 @@
+# StringFit triage for strings that are referenced nowhere.
+#   ignore    -- stop reporting it, do not send for translation
+#   translate -- unused today, but still translate it
+#   keep      -- keep reporting it (default; no decision made)
+unused:
+  legacy_unused_hint: ignore   # pre-Compose screen

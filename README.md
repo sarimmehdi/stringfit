@@ -1,0 +1,197 @@
+# StringFit
+
+**Measures how much room each translatable string actually has — by rendering your
+Compose `@Preview`s.**
+
+Every translation tool lets you set a character limit per string. All of them make
+you type that number in by hand, or guess it from a Figma mockup that drifted from
+the code months ago. StringFit measures it from the app you actually ship.
+
+> Status: early. The measurement pipeline is validated end to end on real apps;
+> the hosted/collaboration half described in the roadmap does not exist yet.
+
+```
+StringFit
+=========
+
+Catalog          9 translatable strings
+Measured         7 (77.8%) rendered by at least one @Preview
+Not measured     1 referenced but never rendered
+Unused           1 referenced nowhere
+
+Site classes     hard=9  soft=1  free=0
+                 only 90% of sites constrain length at all
+
+CUT OFF — text does not fit today (1)
+    action_download_all  needs 259px in 144px
+
+CONFLICT — one string, very different budgets (1)
+    action_cancel  1.69x .. 7.01x across 2 sites
+
+UNUSED — referenced nowhere; triage in stringfit.yml (1)
+    legacy_unused_hint
+
+NOT MEASURED (1)
+  These are used in your app but no @Preview renders them.
+  Writing a preview for each is what grows coverage.
+    error_offline
+```
+
+## Why
+
+A translation that reads perfectly can still be the wrong one, because the button
+is 72dp wide. Deciding that requires three facts about every string: the font size,
+the number of lines allowed, and the width available. Those live in your layout
+code, so that is where StringFit reads them.
+
+The most useful thing it produces is not a limit — it is the **classification**:
+
+| class | meaning | how many |
+|---|---|---|
+| `free` | unbounded width; length does not matter | 21% |
+| `soft` | wraps, but line-limited; the budget is lines | 73% |
+| `hard` | one line at a fixed width; length is a real constraint | **6%** |
+
+Those percentages are measured from a shipping app (Seal, 426 strings). Telling a
+translator "94% of these can be as long as your language needs, and here are the 6%
+that genuinely cannot" beats a blanket character limit, which is what every existing
+tool offers.
+
+## Install
+
+Android + Jetpack Compose only for now.
+
+```kotlin
+// settings.gradle.kts — until this is on the Gradle Plugin Portal
+pluginManagement { includeBuild("path/to/stringfit") }
+```
+
+```kotlin
+// app/build.gradle.kts
+plugins { id("io.github.sarimmehdi.stringfit") }
+
+stringFit {
+    packageTree = "com.example.app"   // defaults to android.namespace
+    rClass = "com.example.app.R"
+}
+```
+
+Then install the measurement harness and follow the printed instructions:
+
+```bash
+./gradlew :app:stringFitInstallHarness
+```
+
+That writes `src/test/java/stringfit/StringFitHarnessTest.kt` — **a file you own**.
+Measuring a real app always needs local adjustment (a stub `Application`, DI setup,
+extra composition locals), so it is a normal source file rather than hidden codegen.
+It is never overwritten unless you pass `--overwrite`.
+
+Add the test dependencies it prints, then:
+
+```bash
+./gradlew :app:test          # renders every @Preview and measures
+./gradlew :app:stringFitReport
+```
+
+## Tasks
+
+| task | what it does |
+|---|---|
+| `stringFitInstallHarness` | Writes the measurement harness into `src/test`. |
+| `stringFitReport` | Reads the measurements and reports budgets, cut-offs and conflicts. |
+| `stringFitBaseline` | Records currently-unused strings so only *new* ones get reported. |
+
+## Unused strings
+
+`stringFitBaseline` writes every string referenced nowhere into `stringfit.yml`:
+
+```yaml
+unused:
+  legacy_hint: ignore        # gone in Q4 — stop reporting, don't translate
+  paywall_title: translate   # unused today, feature ships next month
+  share_email: keep          # still deciding (default)
+```
+
+`ignore` and `translate` are deliberately independent axes: pre-translating a
+feature before the UI is wired up is a normal thing to want. Detection is
+conservative — anything that looks like a reference counts, including
+`searchR.string.x`-style R-class import aliases — because a false "unused" claim
+is much more damaging than a missed one.
+
+## One string, several screens
+
+When the same string renders in a roomy dialog *and* a 72dp chip, taking the
+minimum budget punishes the translation everywhere it had room. StringFit reports
+it as a **conflict** instead, with the spread, so you can choose:
+
+1. **Every site fails** → the translation is genuinely too long. Constrain it.
+2. **One tight site, rest fine** → a layout finding, not a translation one:
+   `Modifier.widthIn(min = 72.dp)` instead of `Modifier.width(72.dp)`.
+3. **The sites mean different things** → split the resource. One `cancel` shared
+   by a chip and a dialog is a latent bug in any language.
+
+The threshold is a 1.8x spread across hard-constrained sites, tuned against real
+data — real spreads top out around 2.1x, so an intuitively-chosen 3x would never
+have fired.
+
+## How it works
+
+1. `ComposablePreviewScanner` enumerates every `@Preview`, expanding multi-previews.
+2. Robolectric renders each one on the JVM with real text metrics — no emulator.
+3. Every text node's `TextLayoutResult` is re-measured with a `TextMeasurer` at
+   unbounded constraints to get the width the text *wants*.
+4. Rendered text is matched back to its string resource, including format-argument
+   templates.
+
+Rendering is cheap: 68 previews measured in **1.8s** (median 17ms each). Your build
+already pays for the compile; the measurement is free on top.
+
+### Things that cost a day to find out
+
+- Compose's own overflow flags are unusable under Robolectric. `didOverflowWidth`
+  is **inverted**, `isLineEllipsized` never fires, and `getLineEnd(visibleEnd=true)`
+  returns the full length on truncated text. Re-measuring intrinsic width is the
+  only reliable ground truth.
+- `intrinsic > available` is **normal** for wrapping text — it just wraps. Treating
+  it as truncation reported 6 broken strings on Seal where exactly 1 was real.
+- Dialogs and bottom sheets compose into their **own root window**; `onRoot()` misses
+  every one. Collecting all roots took preview coverage from 42/74 to 68/74.
+- `@Preview` functions are idiomatically `private`, and the scanner silently returns
+  an empty list without `includePrivatePreviews()`.
+- Robolectric boots your real `Application` and every manifest-declared component
+  before your test runs, so DI and native libraries load for no reason. The harness
+  defaults to a stock `Application`.
+
+## Limitations
+
+- **Android + Compose only.** Compose Multiplatform and moko-resources are detected
+  but not measured. XML/Fragment apps are out of scope entirely.
+- **Coverage is bounded by your previews.** On a real app, ~61% of statically
+  reachable strings actually render; strings behind untaken branches or below a
+  lazy list's viewport never appear. The report names them so you can add previews.
+- **Source-locale measurement.** Translated-locale verification is not built yet.
+- Reported figures are Robolectric's rendering, which is close to but not identical
+  to a device.
+
+## Roadmap
+
+- [x] Static coverage analysis
+- [x] Render harness with per-site width and line budgets
+- [x] Gradle plugin: install, report, unused triage
+- [ ] Translated-locale verification (`stringFitVerify`)
+- [ ] Screenshots with per-string bounding boxes
+- [ ] XLIFF 2.0 export with size restrictions
+- [ ] Publish to the Gradle Plugin Portal
+
+## Repository layout
+
+```
+plugin/   the Gradle plugin (unit tested)
+sample/   an Android module that applies it, containing the hard cases on purpose
+spike/    the research scripts behind the numbers quoted above
+```
+
+## Licence
+
+Apache 2.0.

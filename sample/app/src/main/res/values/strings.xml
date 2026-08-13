@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+
+    <!-- Rendered directly by a preview. -->
+    <string name="screen_title">Your library</string>
+
+    <!-- Reached through a nested composable. -->
+    <string name="item_subtitle">Updated just now</string>
+
+    <!-- MULTI-SITE: same string, two very different budgets.
+         Wide dialog button vs. narrow 72dp chip. -->
+    <string name="action_cancel">Cancel</string>
+
+    <!-- Behind a conditional branch that the preview does not take. -->
+    <string name="error_offline">You appear to be offline. Check your connection and try again.</string>
+
+    <!-- Item 40 of a LazyColumn: statically reachable, never composed. -->
+    <string name="footer_note">That is everything for now</string>
+
+    <!-- Default parameter value on a composable. -->
+    <string name="button_confirm">Confirm</string>
+
+    <!-- Format args: budget depends on the substituted value. -->
+    <string name="greeting">Welcome back, <xliff:g id="name" example="Bartholomew">%1$s</xliff:g></string>
+
+    <!-- Deliberately tight: overflows at fontScale 1.3 in the chip. -->
+    <string name="action_download_all">Download everything</string>
+
+    <!-- Referenced nowhere at all. -->
+    <string name="legacy_unused_hint">Swipe left to archive</string>
+
+    <!-- Not translatable, must be excluded. -->
+    <string name="debug_build_tag" translatable="false">DEBUG</string>
+
+</resources>

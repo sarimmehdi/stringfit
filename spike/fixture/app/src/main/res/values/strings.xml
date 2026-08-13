@@ -1,0 +1,11 @@
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <string name="covered_direct">Hello</string>
+    <string name="covered_nested">Nested</string>
+    <string name="covered_via_multipreview">Multi</string>
+    <string name="uncovered_composable">Orphan</string>
+    <string name="in_viewmodel">From VM</string>
+    <string name="in_xml">From layout</string>
+    <string name="dead_string">Nobody uses me</string>
+    <string name="not_translatable" translatable="false">DEBUG</string>
+    <plurals name="covered_plural"><item quantity="one">%d item</item></plurals>
+</resources>
