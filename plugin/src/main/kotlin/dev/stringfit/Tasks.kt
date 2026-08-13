@@ -96,8 +96,9 @@ abstract class InstallAllTask : DefaultTask() {
         }
         val skipped = modules.get().size - candidates.size
         logger.lifecycle(
-            "StringFit: installed $written harness file(s); " +
-                "$skipped module(s) had no previews. Re-sync, then run `test`.",
+            "StringFit: installed $written harness file(s); $skipped module(s) had " +
+                "no previews. Re-sync (or re-run Gradle) so the new harness is " +
+                "wired into `test`, then run it.",
         )
     }
 }

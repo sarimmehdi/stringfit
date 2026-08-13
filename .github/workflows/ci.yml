@@ -15,14 +15,14 @@ jobs:
     name: Plugin (ktlint, detekt, tests)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
 
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
 
       # `build` runs ktlintCheck and detekt as part of `check`.
       - name: Build and verify
@@ -30,7 +30,7 @@ jobs:
 
       - name: Upload reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: plugin-reports
           path: |
@@ -48,14 +48,14 @@ jobs:
         # ConfigurableFileCollection.convention(Iterable).
         gradle: ['8.8', '8.13', '9.0.0', '9.6.1']
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
 
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
 
       - name: Run the plugin under Gradle ${{ matrix.gradle }}
         run: >
@@ -65,57 +65,73 @@ jobs:
           --stacktrace
 
   sample:
-    name: End-to-end on the sample app
+    name: End-to-end (${{ matrix.name }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Two build lines, because they differ in ways that have already
+          # broken this plugin: AGP 9 compiles Kotlin itself and puts classes
+          # somewhere new, while AGP 8 needs the Kotlin plugin and its
+          # application modules also run release unit tests.
+          - name: AGP 9, multi-module
+            dir: sample
+            expect: |
+              core_status_downloading
+              action_download_all
+              RTL ASYMMETRY
+              legacy_unused_hint
+              CONFLICT
+          - name: AGP 8, Gradle 8
+            dir: sample-agp8
+            expect: |
+              agp8_action_download
+              CUT OFF in de
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
 
-      - uses: android-actions/setup-android@v3
+      - uses: android-actions/setup-android@v4
 
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
 
       # The whole point of the plugin: applied once at the root, it configures
       # every Android module. If this job passes, that contract holds.
       - name: Install the harness
-        working-directory: sample
+        working-directory: ${{ matrix.dir }}
         run: ./gradlew stringFitInstallHarness --overwrite --stacktrace
 
       - name: Measure every preview
-        working-directory: sample
+        working-directory: ${{ matrix.dir }}
         run: ./gradlew test --stacktrace
 
       - name: Report
-        working-directory: sample
+        working-directory: ${{ matrix.dir }}
         run: ./gradlew stringFitReport --stacktrace
 
-      # The sample deliberately contains a cut-off string, a budget conflict, an
-      # unused string and a layout that does not mirror. If any of them stops
-      # being detected, the measurement pipeline has regressed.
+      # Each sample deliberately contains findings. If any stops being detected,
+      # the measurement pipeline has regressed.
       - name: Assert the known findings are still detected
-        working-directory: sample
+        working-directory: ${{ matrix.dir }}
         run: |
           report=build/reports/stringfit/report.txt
           test -f "$report" || { echo "no report produced"; exit 1; }
           cat "$report"
-          for expected in \
-            "core_status_downloading" \
-            "action_download_all" \
-            "RTL ASYMMETRY" \
-            "legacy_unused_hint" \
-            "CONFLICT"; do
+          while IFS= read -r expected; do
+            [ -z "$expected" ] && continue
             grep -q "$expected" "$report" \
               || { echo "::error::report no longer mentions '$expected'"; exit 1; }
-          done
+          done <<< "${{ matrix.expect }}"
 
       - name: Upload report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
-          name: sample-report
-          path: sample/build/reports/stringfit/
+          name: report-${{ matrix.dir }}
+          path: ${{ matrix.dir }}/build/reports/stringfit/
           if-no-files-found: ignore

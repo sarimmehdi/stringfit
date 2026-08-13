@@ -67,7 +67,8 @@ tool offers.
 | UI | Jetpack Compose (Android). Compose Multiplatform is detected but not measured |
 
 Every Gradle version in that range is exercised by a TestKit matrix in CI, and
-the end-to-end flow runs against AGP 9 on every push.
+the end-to-end flow runs on both build lines — AGP 9 on Gradle 9, and AGP 8 on
+Gradle 8 — on every push.
 
 ## Install
 
@@ -262,11 +263,12 @@ already pays for the compile; the measurement is free on top.
 ## Repository layout
 
 ```
-plugin/    the Gradle plugin (ktlint + detekt + unit tested)
-sample/    a two-module Android build that applies it at the root:
-           :app      previews, and the deliberately broken cases
-           :core-ui  strings with no previews of their own
-spike/     the research scripts behind the numbers quoted above
+plugin/       the Gradle plugin (ktlint + detekt + unit tested)
+sample/       a two-module AGP 9 build that applies it at the root:
+              :app      previews, and the deliberately broken cases
+              :core-ui  strings with no previews of their own
+sample-agp8/  the same flow on the AGP 8 / Gradle 8 line
+spike/        the research scripts behind the numbers quoted above
 ```
 
 Run the whole thing locally:
@@ -289,6 +291,12 @@ the Gradle Plugin Portal itself uses:
 
 `Release` can also be run manually from the Actions tab with **dry run** left on,
 which validates the publication without uploading anything.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). The short version: measurement rules
+are changed against evidence, and a false positive costs more than a missed
+finding.
 
 ## Licence
 

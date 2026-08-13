@@ -119,8 +119,24 @@ class StringFitPlugin : Plugin<Project> {
                 t.quiet.set(!standalone)
                 t.localesFile.set(layout.buildDirectory.file("stringfit/locales.txt"))
             }
-        // The harness reads locales.txt at test time, so it must exist first.
-        module.tasks.withType(Test::class.java).configureEach { it.dependsOn(prepare) }
+
+        // The harness reads locales.txt at test time, so it must exist first --
+        // but only modules that actually have a harness should pay for it.
+        // Installing one changes this decision, which is why the install task
+        // asks for a re-sync.
+        if (module.file(Harness.RELATIVE_PATH).isFile) {
+            module.tasks.withType(Test::class.java).configureEach { task ->
+                if (task.name.contains("Release", ignoreCase = true)) {
+                    // androidx.compose.ui:ui-test-manifest is a debug-only
+                    // dependency, so the activity the harness launches into is
+                    // missing from a release variant's merged manifest. Running
+                    // `gradlew test` would otherwise fail on the release task.
+                    task.exclude("stringfit/**")
+                } else {
+                    task.dependsOn(prepare)
+                }
+            }
+        }
     }
 
     /** Feed one module's resources, sources and measurements to the root tasks. */
