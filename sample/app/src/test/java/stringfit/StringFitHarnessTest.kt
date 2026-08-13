@@ -20,7 +20,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ApplicationProvider
-import dev.stringfit.sample.R
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -100,9 +99,22 @@ class StringFitHarnessTest(
 
     private data class Entry(val name: String, val value: String, val regex: Regex?)
 
+    /**
+     * Every module's R.string class, resolved by name.
+     *
+     * With non-transitive R classes a library's strings are absent from
+     * the app's R, so a preview in :app that renders a string from
+     * :core-ui could not be named without this. Classes that are not on
+     * the classpath are skipped.
+     */
+    private fun rStringClasses(): List<Class<*>> =
+        listOf("dev.stringfit.sample.R", "dev.stringfit.core.R").mapNotNull { name ->
+            runCatching { Class.forName(name + '$' + "string") }.getOrNull()
+        }
+
     private fun catalog(): List<Entry> {
         val res = ApplicationProvider.getApplicationContext<Context>().resources
-        return R.string::class.java.fields.mapNotNull { f ->
+        return rStringClasses().flatMap { it.fields.asList() }.mapNotNull { f ->
             val value = runCatching { res.getString(f.getInt(null)) }.getOrNull()
                 ?: return@mapNotNull null
             val regex = if (!argToken.containsMatchIn(value)) null else Regex(

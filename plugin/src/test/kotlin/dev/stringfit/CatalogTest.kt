@@ -1,11 +1,11 @@
 package dev.stringfit
 
+import org.junit.jupiter.api.Test
 import java.io.File
 import kotlin.io.path.createTempDirectory
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
-import org.junit.jupiter.api.Test
 
 class CatalogTest {
 
@@ -69,7 +69,7 @@ class CatalogTest {
             fun c() = getQuantityString(CoreUiR.plurals.aliased_plural, 1)
             // R.string.in_line_comment
             /* R.string.in_block_comment */
-            """.trimIndent()
+            """.trimIndent(),
         )
         File(d, "src/layout.xml").writeText("""<TextView android:text="@string/from_xml"/>""")
         val refs = Catalog.scanReferences(listOf(d))
@@ -102,7 +102,7 @@ class CatalogTest {
               bogus_line: nonsense
             other:
               ignored_section: ignore
-            """.trimIndent()
+            """.trimIndent(),
         )
         val t = Catalog.parseTriage(f)
         assertEquals(UnusedStatus.IGNORE, t["legacy_hint"])
@@ -131,7 +131,7 @@ class CatalogTest {
                 "cancel\tDialogPreview\t624\t89\t1\t1\t89\t360\t1.0",
                 "broken\trow",
                 "hint\tHintPreview\t440\t1018\t2147483647\t3\t440\t360\t1.3",
-            ).joinToString("\n")
+            ).joinToString("\n"),
         )
         val sites = Catalog.parseSites(File(d, "sites"))
         assertEquals(2, sites.size)

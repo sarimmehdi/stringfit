@@ -20,6 +20,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import dev.stringfit.core.NewBadge
+import dev.stringfit.core.StatusBadge
 
 /**
  * Sample UI whose only job is to contain, in one place, every case that makes
@@ -53,6 +55,9 @@ fun LibraryScreen(
         }
 
         LibraryRow()
+        // Components from :core-ui, previewed only from here.
+        StatusBadge()
+        NewBadge()
 
         // CASE D: item 40 of a lazy list -- composed only if it scrolls in.
         LazyColumn(Modifier.fillMaxWidth()) {

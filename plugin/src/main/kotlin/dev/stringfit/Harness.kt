@@ -12,7 +12,11 @@ object Harness {
 
     const val RELATIVE_PATH: String = "src/test/java/stringfit/StringFitHarnessTest.kt"
 
-    fun source(packageTree: String, rClass: String): String = """
+    // The body is a Kotlin source template, not logic; its length is the point.
+    @Suppress("LongMethod")
+    fun source(packageTree: String, rClasses: List<String>): String {
+        val rClassLiterals = rClasses.joinToString(", ") { "\"" + it + "\"" }
+        return """
         package stringfit
 
         import android.content.Context
@@ -35,7 +39,6 @@ object Harness {
         import androidx.compose.ui.unit.Constraints
         import androidx.compose.ui.unit.dp
         import androidx.test.core.app.ApplicationProvider
-        import $rClass
         import org.junit.Rule
         import org.junit.Test
         import org.junit.runner.RunWith
@@ -115,9 +118,22 @@ object Harness {
 
             private data class Entry(val name: String, val value: String, val regex: Regex?)
 
+            /**
+             * Every module's R.string class, resolved by name.
+             *
+             * With non-transitive R classes a library's strings are absent from
+             * the app's R, so a preview in :app that renders a string from
+             * :core-ui could not be named without this. Classes that are not on
+             * the classpath are skipped.
+             */
+            private fun rStringClasses(): List<Class<*>> =
+                listOf($rClassLiterals).mapNotNull { name ->
+                    runCatching { Class.forName(name + '${'$'}' + "string") }.getOrNull()
+                }
+
             private fun catalog(): List<Entry> {
                 val res = ApplicationProvider.getApplicationContext<Context>().resources
-                return R.string::class.java.fields.mapNotNull { f ->
+                return rStringClasses().flatMap { it.fields.asList() }.mapNotNull { f ->
                     val value = runCatching { res.getString(f.getInt(null)) }.getOrNull()
                         ?: return@mapNotNull null
                     val regex = if (!argToken.containsMatchIn(value)) null else Regex(
@@ -216,26 +232,6 @@ object Harness {
                 )
             }
         }
-    """.trimIndent()
-
-    /** Dependencies the consumer must add to run the harness. */
-    val REQUIRED_TEST_DEPENDENCIES: List<String> = listOf(
-        "testImplementation(\"org.robolectric:robolectric:4.16.1\")",
-        "testImplementation(\"androidx.test:core:1.6.1\")",
-        "testImplementation(platform(\"androidx.compose:compose-bom:<your bom>\"))",
-        "testImplementation(\"androidx.compose.ui:ui-test-junit4\")",
-        "testImplementation(\"io.github.sergio-sastre.ComposablePreviewScanner:android:0.9.2\")",
-        "debugImplementation(\"androidx.compose.ui:ui-test-manifest\")",
-    )
-
-    val REQUIRED_ANDROID_CONFIG: String = """
-        android {
-            testOptions {
-                unitTests {
-                    isIncludeAndroidResources = true
-                    all { it.maxHeapSize = "4g" }
-                }
-            }
-        }
-    """.trimIndent()
+        """.trimIndent()
+    }
 }

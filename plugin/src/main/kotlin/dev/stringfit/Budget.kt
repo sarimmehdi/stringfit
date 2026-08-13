@@ -46,8 +46,9 @@ object Budget {
     fun isCutOff(site: Site): Boolean = when (classify(site)) {
         SiteClass.FREE -> false
         SiteClass.HARD -> site.intrinsicWidthPx > site.maxWidthPx
-        SiteClass.SOFT -> site.maxLines in 1..UNBOUNDED_LINES &&
-            site.linesNeeded > site.maxLines
+        SiteClass.SOFT ->
+            site.maxLines in 1..UNBOUNDED_LINES &&
+                site.linesNeeded > site.maxLines
     }
 
     /**
@@ -68,9 +69,8 @@ object Budget {
         return site.maxLines.toDouble() / site.linesNeeded
     }
 
-    fun looksLikeSample(entry: StringEntry): Boolean =
-        SAMPLE_NAME.containsMatchIn(entry.name) ||
-            entry.value.startsWith("Lorem ipsum", ignoreCase = true)
+    fun looksLikeSample(entry: StringEntry): Boolean = SAMPLE_NAME.containsMatchIn(entry.name) ||
+        entry.value.startsWith("Lorem ipsum", ignoreCase = true)
 
     fun verdict(entry: StringEntry, sites: List<Site>): StringVerdict {
         val hard = sites.mapNotNull { widthHeadroom(it) }
@@ -137,7 +137,7 @@ object Budget {
                     sites = group.size,
                     cutOff = group.filter { isCutOff(it) },
                     tight = group.filter {
-                        !isCutOff(it) && (widthHeadroom(it) ?: 9.0) < TIGHT_HEADROOM
+                        !isCutOff(it) && (widthHeadroom(it) ?: Double.MAX_VALUE) < TIGHT_HEADROOM
                     },
                     expansion = paired.average().takeIf { paired.isNotEmpty() },
                 )
@@ -168,7 +168,9 @@ object Budget {
             val widthDiff = kotlin.math.abs(l.maxWidthPx - r.maxWidthPx).toDouble() / l.maxWidthPx
             if (widthDiff > tolerance) {
                 return@mapNotNull RtlAsymmetry(
-                    r.stringName, r.preview, RtlAsymmetry.Kind.WIDTH,
+                    r.stringName,
+                    r.preview,
+                    RtlAsymmetry.Kind.WIDTH,
                     "available width ${l.maxWidthPx}px LTR vs ${r.maxWidthPx}px RTL",
                 )
             }
@@ -183,7 +185,9 @@ object Budget {
             val slack = (rootPx * tolerance).coerceAtLeast(4.0)
             if (kotlin.math.abs(r.leftPx - expectedLeft) > slack) {
                 RtlAsymmetry(
-                    r.stringName, r.preview, RtlAsymmetry.Kind.POSITION,
+                    r.stringName,
+                    r.preview,
+                    RtlAsymmetry.Kind.POSITION,
                     "sits at x=${r.leftPx}px in RTL; mirroring would place it at ${expectedLeft}px",
                 )
             } else {

@@ -1,0 +1,39 @@
+# Overrides layered on top of detekt's defaults (buildUponDefaultConfig = true).
+# Each relaxation below is a deliberate choice, not a way to silence a real
+# finding -- anything switched off here is explained.
+
+complexity:
+  LongParameterList:
+    # Test builders legitimately take many defaulted parameters; that is what
+    # makes the tests readable at the call site.
+    excludes: ['**/test/**']
+  LongMethod:
+    excludes: ['**/test/**']
+  CyclomaticComplexMethod:
+    excludes: ['**/test/**']
+  NestedBlockDepth:
+    excludes: ['**/test/**']
+
+style:
+  MagicNumber:
+    excludes: ['**/test/**']
+    # Column widths inside format strings and display cut-offs read better
+    # inline than as named constants.
+    ignoreNumbers: ['-1', '0', '1', '2', '3', '4', '5', '10', '15', '20', '100']
+    ignorePropertyDeclaration: true
+    ignoreCompanionObjectPropertyDeclaration: true
+  ReturnCount:
+    # Guard clauses are idiomatic Kotlin and clearer than a single nested exit.
+    max: 4
+    excludes: ['**/test/**']
+  LoopWithTooManyJumpStatements:
+    # `forEach { ... return@forEach }` is Kotlin's normal `continue`.
+    active: false
+  ForbiddenComment:
+    # TODO/FIXME markers are tracked in the issue tracker, not banned in source.
+    active: false
+
+naming:
+  FunctionNaming:
+    # JUnit test names are written as backticked sentences.
+    excludes: ['**/test/**']

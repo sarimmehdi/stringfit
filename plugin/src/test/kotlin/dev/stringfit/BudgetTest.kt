@@ -1,10 +1,10 @@
 package dev.stringfit
 
+import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import org.junit.jupiter.api.Test
 
 class BudgetTest {
 
@@ -53,18 +53,18 @@ class BudgetTest {
         // lines and is perfectly fine. The naive rule called this broken.
         assertFalse(
             Budget.isCutOff(
-                site(maxWidth = 440, intrinsic = 1018, maxLines = Int.MAX_VALUE, linesNeeded = 3)
-            )
+                site(maxWidth = 440, intrinsic = 1018, maxLines = Int.MAX_VALUE, linesNeeded = 3),
+            ),
         )
     }
 
     @Test
     fun `wrapping text needing more lines than allowed is cut off`() {
         assertTrue(
-            Budget.isCutOff(site(maxWidth = 440, intrinsic = 1018, maxLines = 2, linesNeeded = 3))
+            Budget.isCutOff(site(maxWidth = 440, intrinsic = 1018, maxLines = 2, linesNeeded = 3)),
         )
         assertFalse(
-            Budget.isCutOff(site(maxWidth = 440, intrinsic = 1018, maxLines = 3, linesNeeded = 3))
+            Budget.isCutOff(site(maxWidth = 440, intrinsic = 1018, maxLines = 3, linesNeeded = 3)),
         )
     }
 
@@ -137,8 +137,10 @@ class BudgetTest {
     fun `conflict needs at least two distinct sites`() {
         val v = Budget.verdict(
             StringEntry("ok", "OK"),
-            listOf(site(preview = "same", maxWidth = 100, intrinsic = 100),
-                   site(preview = "same", maxWidth = 100, intrinsic = 100)),
+            listOf(
+                site(preview = "same", maxWidth = 100, intrinsic = 100),
+                site(preview = "same", maxWidth = 100, intrinsic = 100),
+            ),
         )
         assertFalse(v.conflict)
     }

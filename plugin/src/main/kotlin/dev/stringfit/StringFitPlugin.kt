@@ -1,265 +1,196 @@
 package dev.stringfit
 
-import java.io.File
-import javax.inject.Inject
-import org.gradle.api.DefaultTask
 import org.gradle.api.Plugin
 import org.gradle.api.Project
-import org.gradle.api.file.ConfigurableFileCollection
-import org.gradle.api.file.DirectoryProperty
-import org.gradle.api.file.RegularFileProperty
-import org.gradle.api.model.ObjectFactory
-import org.gradle.api.provider.ListProperty
-import org.gradle.api.provider.Property
-import org.gradle.api.tasks.Input
-import org.gradle.api.tasks.InputFiles
-import org.gradle.api.tasks.Optional
-import org.gradle.api.tasks.OutputDirectory
-import org.gradle.api.tasks.OutputFile
-import org.gradle.api.tasks.PathSensitive
-import org.gradle.api.tasks.PathSensitivity
-import org.gradle.api.tasks.TaskAction
-import org.gradle.api.tasks.options.Option
-import org.gradle.work.DisableCachingByDefault
+import org.gradle.api.tasks.testing.Test
 
-open class StringFitExtension @Inject constructor(objects: ObjectFactory) {
-    /** Package tree the preview scanner walks. Defaults to the module namespace. */
-    val packageTree: Property<String> = objects.property(String::class.java)
-
-    /** Fully qualified R class, e.g. `com.example.app.R`. */
-    val rClass: Property<String> = objects.property(String::class.java)
-
-    /** Resource directories containing `values/`. */
-    val resDirs: ConfigurableFileCollection = objects.fileCollection()
-
-    /** Roots scanned for string references, used to detect unused strings. */
-    val sourceDirs: ConfigurableFileCollection = objects.fileCollection()
-
-    /** Fail the build when a string is cut off in the source language. */
-    val failOnCutOff: Property<Boolean> = objects.property(Boolean::class.java).convention(false)
-
-    /** Triage file for unused strings. */
-    val triageFile: RegularFileProperty = objects.fileProperty()
-
-    /**
-     * Languages to measure alongside the source locale.
-     *
-     * Empty (the default) means *every locale the project ships*, discovered
-     * from `values-XX` directories -- testing German on an app with no German
-     * translation measures nothing. Presets `popular`, `high-risk`, `pseudo`
-     * and `all` expand in place and can be mixed with explicit codes:
-     *
-     * ```kotlin
-     * stringFit { locales = listOf("high-risk", "pt-rBR") }
-     * ```
-     */
-    val locales: ListProperty<String> = objects.listProperty(String::class.java)
-}
-
-@DisableCachingByDefault(because = "Writes a source file the developer owns")
-abstract class InstallHarnessTask : DefaultTask() {
-    @get:Input abstract val packageTree: Property<String>
-    @get:Input abstract val rClass: Property<String>
-    @get:OutputFile abstract val target: RegularFileProperty
-
-    @set:Option(option = "overwrite", description = "Replace an existing harness file")
-    @get:Input var overwrite: Boolean = false
-
-    @TaskAction
-    fun run() {
-        val file = target.get().asFile
-        if (file.exists() && !overwrite) {
-            logger.lifecycle("StringFit: harness already present at ${file.path} (--overwrite to replace)")
-            return
-        }
-        file.parentFile.mkdirs()
-        file.writeText(Harness.source(packageTree.get(), rClass.get()))
-        logger.lifecycle(
-            """
-            |StringFit: wrote ${file.path}
-            |
-            |Add to this module's build.gradle.kts:
-            |
-            ${Harness.REQUIRED_ANDROID_CONFIG.prependIndent("            |  ")}
-            |
-            |dependencies {
-            ${Harness.REQUIRED_TEST_DEPENDENCIES.joinToString("\n") { "            |    $it" }}
-            |}
-            |
-            |Then: ./gradlew test && ./gradlew stringFitReport
-            """.trimMargin()
-        )
-    }
-}
-
-@DisableCachingByDefault(because = "Cheap to recompute and always logs its report")
-abstract class ReportTask : DefaultTask() {
-    @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE)
-    abstract val resDirs: ConfigurableFileCollection
-
-    @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE) @get:Optional
-    abstract val sourceDirs: ConfigurableFileCollection
-
-    @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE) @get:Optional
-    abstract val sitesDir: DirectoryProperty
-
-    @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE) @get:Optional
-    abstract val triageFile: RegularFileProperty
-
-    @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE) @get:Optional
-    abstract val localesFile: RegularFileProperty
-
-    @get:Input abstract val failOnCutOff: Property<Boolean>
-    @get:OutputDirectory abstract val outputDir: DirectoryProperty
-
-    @TaskAction
-    fun run() {
-        val catalog = Catalog.parseCatalog(resDirs.files)
-        if (catalog.isEmpty()) {
-            logger.warn("StringFit: no strings found. Check stringFit { resDirs }.")
-        }
-        val sites = sitesDir.orNull?.asFile?.let(Catalog::parseSites).orEmpty()
-        val referenced = Catalog.scanReferences(sourceDirs.files)
-        val triage = triageFile.orNull?.asFile?.let(Catalog::parseTriage).orEmpty()
-        val report = Budget.analyze(catalog, sites, referenced, triage)
-
-        val out = outputDir.get().asFile.apply { mkdirs() }
-        val text = ReportRenderer.text(report)
-        File(out, "report.txt").writeText(text)
-        File(out, "strings.tsv").writeText(ReportRenderer.tsv(report))
-        logger.lifecycle(text)
-        logger.lifecycle("StringFit: wrote ${File(out, "report.txt").path}")
-
-        if (sites.isEmpty()) {
-            logger.warn(
-                "StringFit: no measurements found. Run the unit tests that contain " +
-                    "StringFitHarnessTest first (./gradlew test)."
-            )
-        }
-        if (failOnCutOff.get() && report.cutOff.isNotEmpty()) {
-            throw org.gradle.api.GradleException(
-                "StringFit: ${report.cutOff.size} string(s) are cut off in the source language."
-            )
-        }
-    }
-}
-
-@DisableCachingByDefault(because = "Writes a tiny file consumed by the test task")
-abstract class PrepareTask : DefaultTask() {
-    @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE)
-    abstract val resDirs: ConfigurableFileCollection
-
-    @get:Input abstract val locales: ListProperty<String>
-    @get:OutputFile abstract val localesFile: RegularFileProperty
-
-    @TaskAction
-    fun run() {
-        val resolved = Locales.resolve(locales.get(), resDirs.files)
-        val file = localesFile.get().asFile
-        file.parentFile.mkdirs()
-        file.writeText(resolved.joinToString("\n"))
-        if (resolved.isEmpty()) {
-            logger.lifecycle(
-                "StringFit: no translated locales found. Measuring the source " +
-                    "locale only. Add values-XX resources, or set " +
-                    "stringFit { locales = listOf(\"pseudo\") } to stress-test."
-            )
-        } else {
-            val rtl = resolved.filter(Locales::isRtl)
-            logger.lifecycle(
-                "StringFit: measuring ${resolved.size} locale(s): " +
-                    resolved.joinToString(", ") +
-                    if (rtl.isEmpty()) "" else "  (RTL: ${rtl.joinToString(", ")})"
-            )
-        }
-    }
-}
-
-@DisableCachingByDefault(because = "Writes a file the developer edits by hand")
-abstract class BaselineTask : DefaultTask() {
-    @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE)
-    abstract val resDirs: ConfigurableFileCollection
-
-    @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE) @get:Optional
-    abstract val sourceDirs: ConfigurableFileCollection
-
-    @get:OutputFile abstract val triageFile: RegularFileProperty
-
-    @TaskAction
-    fun run() {
-        val catalog = Catalog.parseCatalog(resDirs.files)
-        val referenced = Catalog.scanReferences(sourceDirs.files)
-        val file = triageFile.get().asFile
-        val existing = Catalog.parseTriage(file)
-        val unused = catalog.filter { it.translatable && it.name !in referenced }.map { it.name }
-        Catalog.writeTriageBaseline(file, unused, existing)
-        logger.lifecycle(
-            "StringFit: ${unused.size} unused string(s) written to ${file.path}. " +
-                "Mark each ignore / translate / keep."
-        )
-    }
-}
-
+/**
+ * Apply once, in the root `build.gradle.kts`:
+ *
+ * ```kotlin
+ * plugins { id("io.github.sarimmehdi.stringfit") }
+ * ```
+ *
+ * Every Android module is then configured automatically -- test dependencies,
+ * unit-test resources and per-module tasks -- and the root gets aggregate tasks
+ * that report across the whole build. Aggregation matters: a string declared in
+ * `:core:ui` is usually rendered by a preview in `:feature:home`, and neither
+ * module can judge it alone.
+ *
+ * Applying it to a single module also works and configures just that module.
+ */
 class StringFitPlugin : Plugin<Project> {
-    override fun apply(project: Project) {
-        val ext = project.extensions.create("stringFit", StringFitExtension::class.java)
-        val layout = project.layout
+    override fun apply(target: Project) {
+        val root = target.extensions.create("stringFit", StringFitExtension::class.java)
+        root.applyConventions(target)
 
-        ext.resDirs.convention(project.files("src/main/res"))
-        ext.sourceDirs.convention(project.files("src/main/java", "src/main/kotlin", "src/main/res"))
-        ext.triageFile.convention(layout.projectDirectory.file("stringfit.yml"))
-        ext.packageTree.convention(project.provider { defaultPackage(project) })
-        ext.rClass.convention(ext.packageTree.map { "$it.R" })
+        if (target == target.rootProject) {
+            target.subprojects { sub ->
+                whenAndroid(
+                    sub,
+                ) { configureModule(sub, root, standalone = false) }
+            }
+            target.afterEvaluate { registerAggregateTasks(target, root) }
+        } else {
+            whenAndroid(target) { configureModule(target, root, standalone = true) }
+        }
+    }
 
-        project.tasks.register("stringFitInstallHarness", InstallHarnessTask::class.java) { t ->
-            t.group = GROUP
-            t.description = "Installs the preview measurement harness into src/test."
-            t.packageTree.set(ext.packageTree)
-            t.rClass.set(ext.rClass)
-            t.target.set(layout.projectDirectory.file(Harness.RELATIVE_PATH))
+    private fun whenAndroid(project: Project, action: () -> Unit) {
+        var done = false
+        ANDROID_PLUGINS.forEach { id ->
+            project.plugins.withId(id) {
+                if (!done) {
+                    done = true
+                    action()
+                }
+            }
+        }
+    }
+
+    private fun configureModule(module: Project, root: StringFitExtension, standalone: Boolean) {
+        val local =
+            module.extensions.findByType(StringFitExtension::class.java)
+                ?: module.extensions.create("stringFit", StringFitExtension::class.java)
+        local.applyConventions(module)
+        local.inheritFrom(root)
+
+        AndroidWiring.includeAndroidResourcesInUnitTests(module)
+        registerModuleTasks(module, local, root, standalone)
+        if (!standalone) contributeToAggregate(module, local)
+
+        // Only modules that build Compose UI need the harness stack. A module
+        // that already has a harness file gets it too, so a hand-placed harness
+        // in a non-Compose module still compiles.
+        module.plugins.withId(
+            COMPOSE_PLUGIN,
+        ) { AndroidWiring.addHarnessDependencies(module, local) }
+        module.afterEvaluate {
+            if (!it.plugins.hasPlugin(COMPOSE_PLUGIN) && it.file(Harness.RELATIVE_PATH).isFile) {
+                AndroidWiring.addHarnessDependencies(it, local)
+            }
+        }
+    }
+
+    private fun registerModuleTasks(
+        module: Project,
+        ext: StringFitExtension,
+        root: StringFitExtension,
+        standalone: Boolean,
+    ) {
+        val layout = module.layout
+
+        // When the plugin is applied at the root, the root owns the install and
+        // report task names. Registering them per module as well would make
+        // `gradlew stringFitInstallHarness` run in every project and bypass the
+        // aggregate task's "does this module have previews" gate.
+        if (standalone) {
+            module.tasks.register("stringFitInstallHarness", InstallHarnessTask::class.java) { t ->
+                t.group = GROUP
+                t.description = "Installs the preview measurement harness into src/test."
+                t.packageTree.set(ext.packageTree)
+                t.rClasses.set(allRClasses(module))
+                t.target.set(layout.projectDirectory.file(Harness.RELATIVE_PATH))
+            }
+            module.tasks.register("stringFitReport", ReportTask::class.java) { t ->
+                t.group = GROUP
+                t.description = "Reports width and line budgets for this module."
+                t.resDirs.from(ext.resDirs)
+                t.sourceDirs.from(ext.sourceDirs)
+                t.siteDirs.from(layout.buildDirectory.dir("stringfit/sites"))
+                t.triageFile.set(ext.triageFile)
+                t.failOnCutOff.set(ext.failOnCutOff)
+                t.outputDir.set(layout.buildDirectory.dir("reports/stringfit"))
+            }
+            module.tasks.register("stringFitBaseline", BaselineTask::class.java) { t ->
+                t.group = GROUP
+                t.description = "Records currently-unused strings for this module."
+                t.resDirs.from(ext.resDirs)
+                t.sourceDirs.from(ext.sourceDirs)
+                t.triageFile.set(ext.triageFile)
+            }
         }
 
-        val prepare = project.tasks.register("stringFitPrepare", PrepareTask::class.java) { t ->
-            t.group = GROUP
-            t.description = "Resolves which locales the harness should measure."
-            t.resDirs.from(ext.resDirs)
-            t.locales.set(ext.locales)
-            t.localesFile.set(layout.buildDirectory.file("stringfit/locales.txt"))
-        }
+        val prepare =
+            module.tasks.register("stringFitPrepare", PrepareTask::class.java) { t ->
+                t.group = GROUP
+                t.description = "Resolves which locales the harness should measure."
+                t.resDirs.from(ext.resDirs)
+                t.locales.set(root.locales)
+                t.quiet.set(!standalone)
+                t.localesFile.set(layout.buildDirectory.file("stringfit/locales.txt"))
+            }
         // The harness reads locales.txt at test time, so it must exist first.
-        project.tasks.withType(org.gradle.api.tasks.testing.Test::class.java)
-            .configureEach { it.dependsOn(prepare) }
+        module.tasks.withType(Test::class.java).configureEach { it.dependsOn(prepare) }
+    }
 
-        project.tasks.register("stringFitBaseline", BaselineTask::class.java) { t ->
-            t.group = GROUP
-            t.description = "Records currently-unused strings so only new ones are reported."
+    /** Feed one module's resources, sources and measurements to the root tasks. */
+    private fun contributeToAggregate(module: Project, ext: StringFitExtension) {
+        val root = module.rootProject
+        root.tasks.named(REPORT, ReportTask::class.java) { t ->
             t.resDirs.from(ext.resDirs)
             t.sourceDirs.from(ext.sourceDirs)
+            t.siteDirs.from(module.layout.buildDirectory.dir("stringfit/sites"))
+        }
+        root.tasks.named(BASELINE, BaselineTask::class.java) { t ->
+            t.resDirs.from(ext.resDirs)
+            t.sourceDirs.from(ext.sourceDirs)
+        }
+        root.tasks.named(INSTALL, InstallAllTask::class.java) { t ->
+            t.modules.add(module.provider { describeModule(module) })
+        }
+    }
+
+    private fun registerAggregateTasks(root: Project, ext: StringFitExtension) {
+        root.tasks.register(INSTALL, InstallAllTask::class.java) { t ->
+            t.group = GROUP
+            t.description = "Installs the harness into every module that has @Preview functions."
+        }
+
+        root.tasks.register(BASELINE, BaselineTask::class.java) { t ->
+            t.group = GROUP
+            t.description = "Records currently-unused strings across all modules."
             t.triageFile.set(ext.triageFile)
         }
 
-        project.tasks.register("stringFitReport", ReportTask::class.java) { t ->
+        root.tasks.register(REPORT, ReportTask::class.java) { t ->
             t.group = GROUP
-            t.description = "Reports per-string width and line budgets from preview measurements."
-            t.resDirs.from(ext.resDirs)
-            t.sourceDirs.from(ext.sourceDirs)
-            t.sitesDir.set(layout.buildDirectory.dir("stringfit/sites"))
-            t.localesFile.set(layout.buildDirectory.file("stringfit/locales.txt"))
+            t.description = "Reports width and line budgets across every module."
             t.triageFile.set(ext.triageFile)
             t.failOnCutOff.set(ext.failOnCutOff)
-            t.outputDir.set(layout.buildDirectory.dir("reports/stringfit"))
+            t.outputDir.set(root.layout.buildDirectory.dir("reports/stringfit"))
         }
     }
 
-    /** Best-effort namespace lookup that does not bind us to one AGP version. */
-    private fun defaultPackage(project: Project): String {
-        val android = project.extensions.findByName("android") ?: return project.name
-        return runCatching {
-            android.javaClass.getMethod("getNamespace").invoke(android) as? String
-        }.getOrNull() ?: project.name
+    /** Every Android module's R class, so cross-module strings can be named. */
+    private fun allRClasses(module: Project): List<String> {
+        val all =
+            module.rootProject.subprojects
+                .filter { sub -> ANDROID_PLUGINS.any(sub.plugins::hasPlugin) }
+                .mapNotNull { sub ->
+                    runCatching { sub.stringFit().rClass.get() }.getOrNull()
+                }
+        val own = runCatching { module.stringFit().rClass.get() }.getOrNull()
+        return (listOfNotNull(own) + all).distinct()
     }
+
+    private fun describeModule(module: Project): ModuleSpec = ModuleSpec(
+        path = module.path,
+        packageTree = module.stringFit().packageTree.get(),
+        rClasses = allRClasses(module),
+        harnessFile = module.file(Harness.RELATIVE_PATH),
+        sourceDirs = module.stringFit().sourceDirs.files.toList(),
+    )
 
     private companion object {
         const val GROUP = "stringfit"
+        const val INSTALL = "stringFitInstallHarness"
+        const val REPORT = "stringFitReport"
+        const val BASELINE = "stringFitBaseline"
+        const val COMPOSE_PLUGIN = "org.jetbrains.kotlin.plugin.compose"
+        val ANDROID_PLUGINS = listOf("com.android.application", "com.android.library")
+
+        fun Project.stringFit(): StringFitExtension =
+            extensions.getByType(StringFitExtension::class.java)
     }
 }

@@ -4,7 +4,7 @@ plugins {
 }
 
 android {
-    namespace = "dev.stringfit.sample"
+    namespace = "dev.stringfit.core"
     compileSdk = 36
     defaultConfig { minSdk = 24 }
     compileOptions {
@@ -20,13 +20,4 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.ui:ui-tooling-preview")
-    debugImplementation("androidx.compose.ui:ui-tooling")
-    implementation(project(":core-ui"))
-
 }
-
-tasks.withType<Test>().configureEach {
-    maxHeapSize = "4g"
-    testLogging { showStandardStreams = true }
-}
-

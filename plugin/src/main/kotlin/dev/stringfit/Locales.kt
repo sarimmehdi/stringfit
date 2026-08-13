@@ -18,18 +18,13 @@ object Locales {
      * pre-ISO-639 codes for some of these (`iw` = Hebrew, `in` = Indonesian,
      * `ji` = Yiddish), so both spellings are listed.
      */
-    private val RTL_LANGUAGES = setOf(
-        "ar",  // Arabic
-        "dv",  // Divehi
-        "fa",  // Persian
-        "he", "iw",  // Hebrew (iw is the legacy Android qualifier)
-        "ku",  // Kurdish (Sorani)
-        "ps",  // Pashto
-        "sd",  // Sindhi
-        "ug",  // Uyghur
-        "ur",  // Urdu
-        "yi", "ji",  // Yiddish
-    )
+    private val RTL_LANGUAGES =
+        setOf(
+            // Arabic, Divehi, Persian, Hebrew, Kurdish (Sorani), Pashto, Sindhi,
+            // Uyghur, Urdu, Yiddish. Android still ships the pre-ISO-639 codes
+            // for some of these, so `iw` and `ji` are listed alongside `he`/`yi`.
+            "ar", "dv", "fa", "he", "iw", "ku", "ps", "sd", "ug", "ur", "yi", "ji",
+        )
 
     /**
      * Widely shipped app languages. Useful when you want a fixed matrix rather
@@ -63,8 +58,7 @@ object Locales {
 
     fun isProbe(locale: String): Boolean = locale == RTL_PROBE
 
-    fun isRtl(locale: String): Boolean =
-        locale == RTL_PROBE || language(locale) in RTL_LANGUAGES
+    fun isRtl(locale: String): Boolean = locale == RTL_PROBE || language(locale) in RTL_LANGUAGES
 
     /** `pt-rBR` -> `pt`, `b+sr+Latn` -> `sr`. */
     fun language(locale: String): String {
@@ -80,14 +74,13 @@ object Locales {
      * `values-XX` directories. Non-locale qualifiers (`values-night`,
      * `values-w600dp`, `values-v31`) are excluded.
      */
-    fun discover(resDirs: Collection<File>): List<String> =
-        resDirs.filter { it.isDirectory }
-            .flatMap { it.listFiles()?.toList().orEmpty() }
-            .filter { it.isDirectory && it.name.startsWith("values-") }
-            .map { it.name.removePrefix("values-") }
-            .filter(::looksLikeLocale)
-            .distinct()
-            .sorted()
+    fun discover(resDirs: Collection<File>): List<String> = resDirs.filter { it.isDirectory }
+        .flatMap { it.listFiles()?.toList().orEmpty() }
+        .filter { it.isDirectory && it.name.startsWith("values-") }
+        .map { it.name.removePrefix("values-") }
+        .filter(::looksLikeLocale)
+        .distinct()
+        .sorted()
 
     private val NON_LOCALE = setOf(
         "night", "notnight", "land", "port", "ldrtl", "ldltr", "round", "notround",
@@ -99,7 +92,12 @@ object Locales {
     fun looksLikeLocale(qualifier: String): Boolean {
         if (qualifier in NON_LOCALE) return false
         // density, size, version and dimension qualifiers
-        if (qualifier.matches(Regex("""^(v\d+|sw\d+dp|w\d+dp|h\d+dp|\d+dpi|.*dpi)$"""))) return false
+        if (qualifier.matches(
+                Regex("""^(v\d+|sw\d+dp|w\d+dp|h\d+dp|\d+dpi|.*dpi)$"""),
+            )
+        ) {
+            return false
+        }
         return LOCALE_SHAPE.matches(qualifier)
     }
 
@@ -114,14 +112,16 @@ object Locales {
         // Always include the direction probe: it costs one render and is the
         // only way to attribute a width change to mirroring rather than text.
         if (configured.isEmpty()) return (shipped + RTL_PROBE).distinct()
-        return (configured.flatMap { entry ->
-            when (entry.lowercase()) {
-                "popular" -> POPULAR
-                "high-risk", "highrisk" -> HIGH_RISK
-                "pseudo" -> PSEUDO
-                "all", "shipped" -> shipped
-                else -> listOf(entry)
-            }
-        } + RTL_PROBE).distinct()
+        return (
+            configured.flatMap { entry ->
+                when (entry.lowercase()) {
+                    "popular" -> POPULAR
+                    "high-risk", "highrisk" -> HIGH_RISK
+                    "pseudo" -> PSEUDO
+                    "all", "shipped" -> shipped
+                    else -> listOf(entry)
+                }
+            } + RTL_PROBE
+            ).distinct()
     }
 }

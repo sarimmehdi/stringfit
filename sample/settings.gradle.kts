@@ -5,3 +5,4 @@ pluginManagement {
 dependencyResolutionManagement { repositories { google(); mavenCentral() } }
 rootProject.name = "stringfit-sample"
 include(":app")
+include(":core-ui")

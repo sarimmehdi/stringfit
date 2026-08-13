@@ -1,11 +1,11 @@
 package dev.stringfit
 
+import org.junit.jupiter.api.Test
 import java.io.File
 import kotlin.io.path.createTempDirectory
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
-import org.junit.jupiter.api.Test
 
 class LocalesTest {
 
@@ -87,8 +87,10 @@ class LocalesTest {
     fun `a layout that keeps its width but never moves is caught`() {
         // absolutePadding(left = 120.dp) on a 360dp root: same width in both
         // directions, but the inset stays on the left. Only position reveals it.
-        val ltr = Site("t", "P", 480, 200, 1, 1, widthDp = 360,
-            locale = "", leftPx = 240, rightPx = 456)
+        val ltr = Site(
+            "t", "P", 480, 200, 1, 1, widthDp = 360,
+            locale = "", leftPx = 240, rightPx = 456,
+        )
         val rtlBroken = ltr.copy(locale = Locales.RTL_PROBE, leftPx = 240, rightPx = 456)
         val rtlCorrect = ltr.copy(locale = Locales.RTL_PROBE, leftPx = 264, rightPx = 480)
 

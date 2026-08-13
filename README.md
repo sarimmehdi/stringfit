@@ -67,14 +67,17 @@ pluginManagement { includeBuild("path/to/stringfit") }
 ```
 
 ```kotlin
-// app/build.gradle.kts
+// ROOT build.gradle.kts — this is the only file you touch
 plugins { id("io.github.sarimmehdi.stringfit") }
-
-stringFit {
-    packageTree = "com.example.app"   // defaults to android.namespace
-    rClass = "com.example.app.R"
-}
 ```
+
+Every Android module in the build is then configured for you: the harness test
+dependencies are added to Compose modules, unit tests are told to include Android
+resources, and the root gets tasks that report across the whole app at once.
+
+Aggregation is the point, not a convenience. A string declared in `:core:ui` is
+usually rendered by a preview in `:feature:home`, and neither module can judge
+the fit alone — this is exactly the case the sample covers.
 
 Then install the measurement harness and follow the printed instructions:
 
@@ -151,7 +154,7 @@ Two kinds are reported:
 
 | task | what it does |
 |---|---|
-| `stringFitInstallHarness` | Writes the measurement harness into `src/test`. |
+| `stringFitInstallHarness` | Writes the harness into every module that has `@Preview` functions. |
 | `stringFitPrepare` | Resolves which locales to measure (runs automatically before `test`). |
 | `stringFitReport` | Reads the measurements and reports budgets, cut-offs and conflicts. |
 | `stringFitBaseline` | Records currently-unused strings so only *new* ones get reported. |
@@ -221,6 +224,10 @@ already pays for the compile; the measurement is free on top.
 
 - **Android + Compose only.** Compose Multiplatform and moko-resources are detected
   but not measured. XML/Fragment apps are out of scope entirely.
+- **Modules are measured per module, aggregated at the root.** Each harness
+  scans its own package tree but resolves every module's `R` class, so a string
+  from a library rendered by an app preview is still named correctly under
+  non-transitive R.
 - **Coverage is bounded by your previews.** On a real app, ~61% of statically
   reachable strings actually render; strings behind untaken branches or below a
   lazy list's viewport never appear. The report names them so you can add previews.
@@ -236,6 +243,7 @@ already pays for the compile; the measurement is free on top.
 - [x] Render harness with per-site width and line budgets
 - [x] Gradle plugin: install, report, unused triage
 - [x] Translated-locale measurement, with RTL mirroring checks
+- [x] Multi-module: apply once at the root
 - [ ] Screenshots with per-string bounding boxes
 - [ ] XLIFF 2.0 export with size restrictions
 - [ ] Publish to the Gradle Plugin Portal
@@ -243,9 +251,18 @@ already pays for the compile; the measurement is free on top.
 ## Repository layout
 
 ```
-plugin/   the Gradle plugin (unit tested)
-sample/   an Android module that applies it, containing the hard cases on purpose
-spike/    the research scripts behind the numbers quoted above
+plugin/    the Gradle plugin (ktlint + detekt + unit tested)
+sample/    a two-module Android build that applies it at the root:
+           :app      previews, and the deliberately broken cases
+           :core-ui  strings with no previews of their own
+spike/     the research scripts behind the numbers quoted above
+```
+
+Run the whole thing locally:
+
+```bash
+./gradlew build                                   # plugin: ktlint, detekt, tests
+cd sample && ./gradlew stringFitInstallHarness test stringFitReport
 ```
 
 ## Licence

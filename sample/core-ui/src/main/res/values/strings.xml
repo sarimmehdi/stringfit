@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Declared here, but only ever rendered by a preview in :app. -->
+    <string name="core_badge_new">New</string>
+    <!-- Tight on purpose: German blows the 64dp badge. -->
+    <string name="core_status_downloading">Downloading</string>
+</resources>

@@ -2,6 +2,8 @@ plugins {
     `java-gradle-plugin`
     `maven-publish`
     kotlin("jvm") version "2.3.21"
+    id("org.jlleitschuh.gradle.ktlint") version "12.1.2"
+    id("io.gitlab.arturbosch.detekt") version "1.23.8"
 }
 
 group = "io.github.sarimmehdi"
@@ -31,4 +33,10 @@ gradlePlugin {
             tags = listOf("android", "compose", "localization", "i18n", "translation")
         }
     }
+}
+
+detekt {
+    buildUponDefaultConfig = true
+    config.setFrom(rootProject.file("config/detekt.yml"))
+    parallel = true
 }

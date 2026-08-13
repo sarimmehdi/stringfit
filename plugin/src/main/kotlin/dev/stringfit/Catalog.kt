@@ -1,8 +1,8 @@
 package dev.stringfit
 
+import org.w3c.dom.Element
 import java.io.File
 import javax.xml.parsers.DocumentBuilderFactory
-import org.w3c.dom.Element
 
 /**
  * Reads the string catalog and works out which entries are referenced anywhere.
@@ -59,25 +59,27 @@ object Catalog {
             .distinctBy { it.name }
 
     /** Resource names referenced from Kotlin/Java sources or from XML resources. */
-    fun scanReferences(roots: Collection<File>): Set<String> {
-        val found = mutableSetOf<String>()
-        roots.filter { it.exists() }.forEach { root ->
-            root.walkTopDown()
-                .filter { it.isFile && !it.path.contains("${File.separator}build${File.separator}") }
-                .forEach { f ->
-                    when (f.extension) {
-                        "kt", "java" -> {
-                            val src = f.readText()
-                                .replace(BLOCK_COMMENT, " ")
-                                .replace(LINE_COMMENT, " ")
-                            KOTLIN_REF.findAll(src).forEach { found += it.groupValues[1] }
-                        }
-                        "xml" -> XML_REF.findAll(f.readText())
-                            .forEach { found += it.groupValues[1] }
-                    }
-                }
+    fun scanReferences(roots: Collection<File>): Set<String> = roots
+        .filter { it.exists() }
+        .asSequence()
+        .flatMap { it.walkTopDown() }
+        .filter { it.isFile }
+        .filterNot { it.path.contains("${File.separator}build${File.separator}") }
+        .flatMap(::referencesIn)
+        .toSet()
+
+    private fun referencesIn(file: File): Sequence<String> = when (file.extension) {
+        "kt", "java" -> {
+            val src =
+                file
+                    .readText()
+                    .replace(BLOCK_COMMENT, " ")
+                    .replace(LINE_COMMENT, " ")
+            KOTLIN_REF.findAll(src).map { it.groupValues[1] }
         }
-        return found
+
+        "xml" -> XML_REF.findAll(file.readText()).map { it.groupValues[1] }
+        else -> emptySequence()
     }
 
     /**
@@ -130,8 +132,28 @@ object Catalog {
                 merged.forEach { (name, status) ->
                     appendLine("  $name: ${status.name.lowercase()}")
                 }
-            }
+            },
         )
+    }
+
+    /**
+     * Column layout of the measurement rows the harness writes. Keep in sync
+     * with `Harness.source`, which is the only producer of these files.
+     */
+    private object Col {
+        const val NAME = 0
+        const val PREVIEW = 1
+        const val MAX_WIDTH = 2
+        const val INTRINSIC_WIDTH = 3
+        const val MAX_LINES = 4
+        const val LINES_NEEDED = 5
+        const val LAYOUT_WIDTH = 6
+        const val WIDTH_DP = 7
+        const val FONT_SCALE = 8
+        const val LOCALE = 9
+        const val LEFT = 10
+        const val RIGHT = 11
+        const val REQUIRED = 9
     }
 
     /** Measurement rows emitted by the generated harness (tab separated). */
@@ -142,21 +164,21 @@ object Catalog {
             .flatMap { it.readLines().asSequence() }
             .mapNotNull { line ->
                 val p = line.split('\t')
-                if (p.size < 9 || p[0].isBlank()) return@mapNotNull null
+                if (p.size < Col.REQUIRED || p[Col.NAME].isBlank()) return@mapNotNull null
                 runCatching {
                     Site(
-                        stringName = p[0],
-                        preview = p[1],
-                        maxWidthPx = p[2].toInt(),
-                        intrinsicWidthPx = p[3].toInt(),
-                        maxLines = p[4].toInt(),
-                        linesNeeded = p[5].toInt(),
-                        layoutWidthPx = p[6].toInt(),
-                        widthDp = p[7].toInt(),
-                        fontScale = p[8].toFloat(),
-                        locale = p.getOrNull(9).orEmpty(),
-                        leftPx = p.getOrNull(10)?.toIntOrNull() ?: -1,
-                        rightPx = p.getOrNull(11)?.toIntOrNull() ?: -1,
+                        stringName = p[Col.NAME],
+                        preview = p[Col.PREVIEW],
+                        maxWidthPx = p[Col.MAX_WIDTH].toInt(),
+                        intrinsicWidthPx = p[Col.INTRINSIC_WIDTH].toInt(),
+                        maxLines = p[Col.MAX_LINES].toInt(),
+                        linesNeeded = p[Col.LINES_NEEDED].toInt(),
+                        layoutWidthPx = p[Col.LAYOUT_WIDTH].toInt(),
+                        widthDp = p[Col.WIDTH_DP].toInt(),
+                        fontScale = p[Col.FONT_SCALE].toFloat(),
+                        locale = p.getOrNull(Col.LOCALE).orEmpty(),
+                        leftPx = p.getOrNull(Col.LEFT)?.toIntOrNull() ?: -1,
+                        rightPx = p.getOrNull(Col.RIGHT)?.toIntOrNull() ?: -1,
                     )
                 }.getOrNull()
             }
