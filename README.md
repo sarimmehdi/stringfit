@@ -7,8 +7,9 @@ Every translation tool lets you set a character limit per string. All of them ma
 you type that number in by hand, or guess it from a Figma mockup that drifted from
 the code months ago. StringFit measures it from the app you actually ship.
 
-> Status: early. The measurement pipeline is validated end to end on real apps;
-> the hosted/collaboration half described in the roadmap does not exist yet.
+> Status: 0.1.0, the first release. The measurement pipeline is validated end to
+> end on real apps; the hosted/collaboration half described in the roadmap does
+> not exist yet. Expect rough edges and please open issues.
 
 ```
 StringFit
@@ -73,13 +74,8 @@ Gradle 8 — on every push.
 ## Install
 
 ```kotlin
-// settings.gradle.kts — until the first Portal release
-pluginManagement { includeBuild("path/to/stringfit") }
-```
-
-```kotlin
 // ROOT build.gradle.kts — this is the only file you touch
-plugins { id("io.github.sarimmehdi.stringfit") }
+plugins { id("io.github.sarimmehdi.stringfit") version "0.1.0" }
 ```
 
 Every Android module in the build is then configured for you: the harness test
@@ -90,10 +86,10 @@ Aggregation is the point, not a convenience. A string declared in `:core:ui` is
 usually rendered by a preview in `:feature:home`, and neither module can judge
 the fit alone — this is exactly the case the sample covers.
 
-Then install the measurement harness and follow the printed instructions:
+Then install the measurement harness:
 
 ```bash
-./gradlew :app:stringFitInstallHarness
+./gradlew stringFitInstallHarness
 ```
 
 That writes `src/test/java/stringfit/StringFitHarnessTest.kt` — **a file you own**.
@@ -101,12 +97,14 @@ Measuring a real app always needs local adjustment (a stub `Application`, DI set
 extra composition locals), so it is a normal source file rather than hidden codegen.
 It is never overwritten unless you pass `--overwrite`.
 
-Add the test dependencies it prints, then:
+Re-sync so the new harness is wired in, then:
 
 ```bash
-./gradlew :app:test          # renders every @Preview and measures
-./gradlew :app:stringFitReport
+./gradlew test               # renders every @Preview and measures
+./gradlew stringFitReport
 ```
+
+Test dependencies are added for you; there is nothing to paste into a module.
 
 ## Languages
 
