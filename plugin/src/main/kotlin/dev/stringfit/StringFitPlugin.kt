@@ -59,15 +59,14 @@ class StringFitPlugin : Plugin<Project> {
         registerModuleTasks(module, local, root, standalone)
         if (!standalone) contributeToAggregate(module, local)
 
-        // Only modules that build Compose UI need the harness stack. A module
-        // that already has a harness file gets it too, so a hand-placed harness
-        // in a non-Compose module still compiles.
-        module.plugins.withId(
-            COMPOSE_PLUGIN,
-        ) { AndroidWiring.addHarnessDependencies(module, local) }
-        module.afterEvaluate {
-            if (!it.plugins.hasPlugin(COMPOSE_PLUGIN) && it.file(Harness.RELATIVE_PATH).isFile) {
-                AndroidWiring.addHarnessDependencies(it, local)
+        // Dependencies are declared after this plugin is applied, and the
+        // Compose BOM has to be read from them, so wire the harness stack once
+        // the module's own build script has run.
+        module.afterEvaluate { evaluated ->
+            val buildsCompose = evaluated.plugins.hasPlugin(COMPOSE_PLUGIN)
+            val hasHarness = evaluated.file(Harness.RELATIVE_PATH).isFile
+            if (buildsCompose || hasHarness) {
+                AndroidWiring.addHarnessDependencies(evaluated, local)
             }
         }
     }
@@ -150,12 +149,20 @@ class StringFitPlugin : Plugin<Project> {
         root.tasks.register(BASELINE, BaselineTask::class.java) { t ->
             t.group = GROUP
             t.description = "Records currently-unused strings across all modules."
+            t.resDirs.from(ext.resDirs)
+            t.sourceDirs.from(ext.sourceDirs)
             t.triageFile.set(ext.triageFile)
         }
 
         root.tasks.register(REPORT, ReportTask::class.java) { t ->
             t.group = GROUP
             t.description = "Reports width and line budgets across every module."
+            // The root's own directories are included too. They are empty in a
+            // normal Android build, and they let a single-project build (or a
+            // functional test) be measured without any subprojects.
+            t.resDirs.from(ext.resDirs)
+            t.sourceDirs.from(ext.sourceDirs)
+            t.siteDirs.from(root.layout.buildDirectory.dir("stringfit/sites"))
             t.triageFile.set(ext.triageFile)
             t.failOnCutOff.set(ext.failOnCutOff)
             t.outputDir.set(root.layout.buildDirectory.dir("reports/stringfit"))

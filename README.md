@@ -57,12 +57,22 @@ translator "94% of these can be as long as your language needs, and here are the
 that genuinely cannot" beats a blanket character limit, which is what every existing
 tool offers.
 
+## Requirements
+
+| | |
+|---|---|
+| Gradle | **8.8+** — older releases lack `ConfigurableFileCollection.convention` |
+| JDK | 17+ |
+| Android Gradle Plugin | 8.x or 9.x |
+| UI | Jetpack Compose (Android). Compose Multiplatform is detected but not measured |
+
+Every Gradle version in that range is exercised by a TestKit matrix in CI, and
+the end-to-end flow runs against AGP 9 on every push.
+
 ## Install
 
-Android + Jetpack Compose only for now.
-
 ```kotlin
-// settings.gradle.kts — until this is on the Gradle Plugin Portal
+// settings.gradle.kts — until the first Portal release
 pluginManagement { includeBuild("path/to/stringfit") }
 ```
 
@@ -246,6 +256,7 @@ already pays for the compile; the measurement is free on top.
 - [x] Multi-module: apply once at the root
 - [ ] Screenshots with per-string bounding boxes
 - [ ] XLIFF 2.0 export with size restrictions
+- [x] Verified Gradle compatibility matrix (8.8 … 9.6) in CI
 - [ ] Publish to the Gradle Plugin Portal
 
 ## Repository layout
@@ -264,6 +275,20 @@ Run the whole thing locally:
 ./gradlew build                                   # plugin: ktlint, detekt, tests
 cd sample && ./gradlew stringFitInstallHarness test stringFitReport
 ```
+
+## Releasing
+
+Publishing runs from CI on a `v*` tag, and refuses to publish if the tag and the
+project version disagree. It needs two repository secrets, which are the names
+the Gradle Plugin Portal itself uses:
+
+| Secret | Where it comes from |
+|---|---|
+| `GRADLE_PUBLISH_KEY` | Plugin Portal → your profile → API keys |
+| `GRADLE_PUBLISH_SECRET` | issued alongside the key |
+
+`Release` can also be run manually from the Actions tab with **dry run** left on,
+which validates the publication without uploading anything.
 
 ## Licence
 

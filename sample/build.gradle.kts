@@ -6,7 +6,6 @@ plugins {
 }
 
 stringFit {
-    // Match the Compose version the modules build against.
-    composeBom = "androidx.compose:compose-bom:2026.06.01"
-    // locales defaults to whatever the project ships (values-XX dirs).
+    // Nothing to configure: the Compose BOM is detected from each module, and
+    // locales default to whatever the project ships (values-XX directories).
 }
